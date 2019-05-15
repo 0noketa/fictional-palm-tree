@@ -94,6 +94,15 @@ public class SplitPager
         return h / cols + (h % cols > 0 ? 1 : 0);
     }
 
+    string ReplaceTabs(string src)
+    {
+        string f(string s) =>
+            Substring(s, Offset, MaxCharsIntoCharColumns(s, Offset, PageWidth));
+
+        return f(src.Replace("\r", "")
+            .Replace("\t", new String(' ', TabWidth)));        
+    }
+
     public string[] LoadPage()
     {
         string[] src;
@@ -103,9 +112,7 @@ public class SplitPager
             HasNext = false;
             src = input.ReadToEnd()
                 .Split('\n')
-                .Select(s =>
-                    s.Replace("\r", "")
-                        .Replace("\t", new String(' ', TabWidth)))
+                .Select(s => ReplaceTabs(s))
                 .ToArray();
             PageHeight = SrcHeightToDstHeight(src.Length, Columns);
         }
@@ -122,7 +129,7 @@ public class SplitPager
                         return "";
                     }
                     else
-                        return s;
+                        return ReplaceTabs(s);
                 })
                 .ToArray();
 
@@ -158,6 +165,7 @@ public class SplitPager
         return i;
     }
 
+    // 範囲外は空白に
     string Substring(string s, int startIndex = -1, int length = -1)
     {
         if (startIndex == -1) startIndex = Offset;
@@ -174,8 +182,6 @@ public class SplitPager
 
     void DumpPage(string[] src) 
     {
-        string f(string s) =>
-            Substring(s, Offset, MaxCharsIntoCharColumns(s, Offset, PageWidth));
         string fill(string s) => 
             s.Length >= PageWidth
             ? s 
@@ -183,17 +189,16 @@ public class SplitPager
 
         for (int row = 0; row < PageHeight; ++row)
         {
-            string s = f(src[row]);
-            var s2 = fill(s);
+            string s = fill(src[row]);
 
             for (int col = 1; col < Columns; ++col)
             {
-                int idx = rows * col + row;
+                int idx = PageHeight * col + row;
 
-                if (idx < src.Length) s2 += Separator + fill(f(src[idx]));
+                if (idx < src.Length) s += Separator + fill(src[idx]);
             }
 
-            output.WriteLine("{0}", s2);
+            output.WriteLine("{0}", s);
         }
     }
 
