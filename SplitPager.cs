@@ -231,7 +231,7 @@ public class SplitPager
 
         if (opts.ContainsKey("help"))
         {
-            Console.WriteLine("SplitPager [opts] < input > output |more");
+            Console.WriteLine("SplitPager [opts] < input |more");
             Console.WriteLine("outions: -help -cols=N -w=N -h=N -sep=S -tab=N -offset=N");
 
             return;

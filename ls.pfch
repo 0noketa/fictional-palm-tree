@@ -1,0 +1,30 @@
+let atleast_1arg
+    args len gt(0);
+
+atleast_1arg
+&& args ld(0) in(["/?", "/help", "-help", "--help"])
+then
+    let _
+        "python pfch.py ls.pfch [--regex] [file]" putln;
+    0
+else
+    let uses_regex
+        atleast_1arg
+        && args ld(0) in(["/re", "-re", "--regex"])
+
+    let files
+        atleast_1arg
+        then
+            let files
+                args ld(uses_regex then 1 else 0);
+            uses_regex
+            then files re
+            else files
+        else ".";
+
+    let _
+        map i
+            i putln;
+            files all;
+    0
+;;

@@ -1,0 +1,10 @@
+*.o
+*.obj
+*.a
+*.lib
+*.dll
+*.so
+*.exe
+*.pyc
+*.pyd
+*.exp
