@@ -2,7 +2,6 @@ from typing import cast, List, Dict
 import sys
 import io
 
-from numpy.core.defchararray import startswith
 from brainfuck_interpreter import Bfi
 
 eof = 255
@@ -13,7 +12,7 @@ def default_read() -> int:
     s = sys.stdin.read(1) if sys.stdin.readable() else ""
     return ord(s) & 0xFF if len(s) else eof
 
-def default_write(n: int) -> int:
+def default_write(n: int) -> None:
     if sys.stdout.writable():
         sys.stdout.write(chr(n))
 

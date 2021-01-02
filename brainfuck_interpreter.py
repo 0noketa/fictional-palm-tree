@@ -27,39 +27,46 @@ def default_read() -> int:
     s = sys.stdin.read(1) if sys.stdin.readable() else ""
     return ord(s) & 0xFF if len(s) else 255
 
-def default_write(n: int) -> int:
+def default_write(n: int) -> None:
     if sys.stdout.writable():
         sys.stdout.write(chr(n))
 
 class Mask:
     """template for partial-update (can use SIMD?)\n
        from: eval "[>+>>++<<<-]"\n
-       to: for i in range(4): data[ptr + i:ptr + i + 4] += [0, 1, 0, 2][i]; ptr += 1
+       to: for i in range(4): data[ptr + i:ptr + i + 4] += [-1, 1, 0, 2][i]
     """
 
-    def __init__(self, mask: List[int], anchor: int) -> None:
+    def __init__(self, mask: List[int], anchor: int, next_ptr: int) -> None:
         super().__init__()
 
         self.mask = mask
         self.anchor = anchor
+        self.next_ptr = next_ptr
 
     def can_apply(self, data: List[int], ptr: int) -> bool:
         return (ptr + self.anchor >= 0
             and ptr + self.anchor + len(self.mask) <= len(data))
 
-    def apply(self, data: List[int], ptr: int):
+    def apply(self, data: List[int], ptr: int) -> int:
         if not (ptr in range(len(data))):
             raise Exception(f"applied mask was broken")
 
         if data[ptr] == 0:
-            return
+            return ptr
 
-        # while data[ptr] != 0:
-        #     for i in range(len(self.mask)):
-        #         j = ptr + self.anchor + i
+        # when mask updates base pointer
+        if self.next_ptr != 0:
+            while data[ptr] != 0:
+                j = ptr + self.anchor
+                for i in range(len(self.mask)):
+                    data[j] = (data[j] + self.mask[i]) & 0xFF
 
-        #         data[j] = (data[j] + self.mask[i]) & 0xFF
-        # return
+                    j += 1
+
+                ptr += self.next_ptr
+
+            return ptr
 
         diff = self.mask[-self.anchor]
         current = (data[ptr] + diff) & 0xFF
@@ -72,10 +79,13 @@ class Mask:
             if n > 256:
                 raise Exception(f"infinity loop (runtime detection)")
 
+        j = ptr + self.anchor
         for i in range(len(self.mask)):
-            j = ptr + self.anchor + i
-
             data[j] = (data[j] + self.mask[i] * n) & 0xFF
+
+            j += 1
+
+        return ptr
 
 class Bfi:
     def __init__(self, src: str,
@@ -132,6 +142,7 @@ class Bfi:
         if not (i in range(len(self.src)) and self.src[i] == INS.LOOP_START):
             return (None, i + 1)
 
+        pairs = dict()
         lower = []
         higher = [0]
         ptr = 0
@@ -141,8 +152,6 @@ class Bfi:
             if self.src[j] == INS.LOOP_END:
                 j += 1
                 break
-            elif self.src[j] == INS.LOOP_START:
-                return (None, i + 1)
             elif self.src[j] == INS.INC_PTR:
                 ptr += 1
                 if abs(ptr) > len(higher) - 1:
@@ -153,20 +162,20 @@ class Bfi:
                     lower.append(0)
             elif self.src[j] == INS.INC_VAL:
                 if ptr < 0:
-                    lower[abs(ptr) - 1] += 1
+                    lower[abs(ptr) - 1] = (lower[abs(ptr) - 1] + 1) & 0xFF
                 else:
-                    higher[ptr] += 1
+                    higher[ptr] = (higher[ptr] + 1) & 0xFF
             elif self.src[j] == INS.DEC_VAL:
                 if ptr < 0:
-                    lower[abs(ptr) - 1] -= 1
+                    lower[abs(ptr) - 1] = (lower[abs(ptr) - 1] - 1) & 0xFF
                 else:
-                    higher[ptr] -= 1
+                    higher[ptr] = (higher[ptr] - 1) & 0xFF
             else:
                 return (None, i + 1)
 
             j += 1
 
-        if ptr != 0 or j - i < 5:
+        if j - i < 5:
             return (None, i + 1)
 
         if higher[0] == 0:
@@ -175,7 +184,7 @@ class Bfi:
         anchor = -len(lower)
         mask = [i & 0xFF for i in list(reversed(lower)) + higher]
 
-        return (Mask(mask, anchor), j)
+        return (Mask(mask, anchor, ptr), j)
 
     def scan_clears(self):
         global INS
@@ -329,7 +338,7 @@ class Bfi:
                 mask = self.masks[ins - INS.X_MASK0]
 
                 if mask.can_apply(self.data, self.ptr):
-                    mask.apply(self.data, self.ptr)
+                    self.ptr = mask.apply(self.data, self.ptr)
                 else:
                     Exception(f"mask was broken")
             elif ins == INS.X_DEBUG:
