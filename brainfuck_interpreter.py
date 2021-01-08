@@ -16,6 +16,7 @@ class InsCodes:
         self.INPUT = ord(",")
         self.OUTPUT = ord(".")
         self.X_CLEAR = ord("0")
+        self.X_SKIPR = ord("}")
         self.X_DEBUG = ord("!")
         self.X_MASK0 = ord("a")
         self.RANGE_X_MASKS = range(ord("a"), ord("z") + 1)
@@ -33,8 +34,8 @@ def default_write(n: int) -> None:
 
 class Mask:
     """template for partial-update (can use SIMD?)\n
-       from: eval "[>+>>++<<<-]"\n
-       to: for i in range(4): data[ptr + i:ptr + i + 4] += [-1, 1, 0, 2][i]
+       from: eval_bf("[>+>>++<<<-]")\n
+       to: for i in range(4): data[ptr + i] += [-1, 1, 0, 2][i]
     """
 
     def __init__(self, mask: List[int], anchor: int, next_ptr: int) -> None:
@@ -43,6 +44,13 @@ class Mask:
         self.mask = mask
         self.anchor = anchor
         self.next_ptr = next_ptr
+        self.pairs = dict()
+
+        for i in range(len(self.mask)):
+            if self.mask[i] != 0:
+                self.pairs[i] = self.mask[i]
+
+        self.uses_dict = len(self.pairs) < len(self.mask) / 4
 
     def can_apply(self, data: List[int], ptr: int) -> bool:
         return (ptr + self.anchor >= 0
@@ -58,32 +66,49 @@ class Mask:
         # when mask updates base pointer
         if self.next_ptr != 0:
             while data[ptr] != 0:
-                j = ptr + self.anchor
-                for i in range(len(self.mask)):
-                    data[j] = (data[j] + self.mask[i]) & 0xFF
+                if self.uses_dict:
+                    for i in self.pairs.keys():
+                        j = ptr + self.anchor + i
 
-                    j += 1
+                        data[j] = (data[j] + self.mask[i]) & 0xFF
+                else:
+                    j = ptr + self.anchor
+
+                    for i in range(len(self.mask)):
+                        data[j] = (data[j] + self.mask[i]) & 0xFF
+
+                        j += 1
 
                 ptr += self.next_ptr
 
             return ptr
 
         diff = self.mask[-self.anchor]
-        current = (data[ptr] + diff) & 0xFF
-        n = 1
 
-        while current != 0:
-            current = (current + diff) & 0xFF
-            n += 1
+        if diff == 255:
+            n = data[ptr]
+        else:
+            current = (data[ptr] + diff) & 0xFF
+            n = 1
 
-            if n > 256:
-                raise Exception(f"infinity loop (runtime detection)")
+            while current != 0:
+                current = (current + diff) & 0xFF
+                n += 1
 
-        j = ptr + self.anchor
-        for i in range(len(self.mask)):
-            data[j] = (data[j] + self.mask[i] * n) & 0xFF
+                if n > 256:
+                    raise Exception(f"infinite loop")
 
-            j += 1
+        if self.uses_dict:
+            for i in self.pairs.keys():
+                j = ptr + self.anchor + i
+
+                data[j] = (data[j] + self.mask[i] * n) & 0xFF
+        else:
+            j = ptr + self.anchor
+            for i in range(len(self.mask)):
+                data[j] = (data[j] + self.mask[i] * n) & 0xFF
+
+                j += 1
 
         return ptr
 
@@ -91,16 +116,22 @@ class Bfi:
     def __init__(self, src: str,
             memory_size: int = 0x10000,
             read: Callable[[], int] = default_read,
-            write: Callable[[int], None] = default_write) -> None:
-        self.src = [ord(c) for c in src if c in "+-><[],.!"]
+            write: Callable[[int], None] = default_write,
+            debug=False) -> None:
+        if debug:
+            self.src = [ord(c) for c in src if c in "+-><[],.!"]
+        else:
+            self.src = [ord(c) for c in src if c in "+-><[],."]
         self.memory_size = memory_size
         self.read = read
         self.write = write
+        self.debug = debug
         # masks
         self.masks = self.scan_masks()
         self.scan_clears()
-        # Dict[int, int] or large List[int]
+        # Dict[ip: int, n_repeat: int] or large List[n_repeat: int]
         self.inc_pairs = self.scan_incs()
+
         self.bracket_pairs = self.scan_blocks()
         
         self.reinit()
@@ -142,7 +173,6 @@ class Bfi:
         if not (i in range(len(self.src)) and self.src[i] == INS.LOOP_START):
             return (None, i + 1)
 
-        pairs = dict()
         lower = []
         higher = [0]
         ptr = 0
@@ -178,8 +208,8 @@ class Bfi:
         if j - i < 5:
             return (None, i + 1)
 
-        if higher[0] == 0:
-            raise Exception(f"infinity loop")
+        if ptr == 0 and higher[0] == 0:
+            raise Exception(f"infinite loop")
 
         anchor = -len(lower)
         mask = [i & 0xFF for i in list(reversed(lower)) + higher]
@@ -190,8 +220,13 @@ class Bfi:
         global INS
         i = 0
         while i < len(self.src) - 2:
-            if self.src[i] == INS.LOOP_START and chr(self.src[i + 1]) in "+-" and self.src[i + 2] == INS.LOOP_END:
-                self.src = self.src[:i] + [INS.X_CLEAR] + self.src[i + 3:]
+            if self.src[i] == INS.LOOP_START and self.src[i + 2] == INS.LOOP_END:
+                c = chr(self.src[i + 1])
+
+                if c == ">":
+                    self.src = self.src[:i] + [INS.X_SKIPR] + self.src[i + 3:]
+                elif c in "+-":
+                    self.src = self.src[:i] + [INS.X_CLEAR] + self.src[i + 3:]
 
             i += 1
 
@@ -237,7 +272,7 @@ class Bfi:
                 continue
 
             if r[i] < 0:
-                Exception("any open loop exist")
+                raise Exception("any open loop exist")
 
         return r
 
@@ -317,13 +352,13 @@ class Bfi:
             elif ins == INS.INC_PTR:
                 self.ptr += self.inc_pairs[self.ip]
 
-                if self.ptr < self.memory_size:
-                    Exception(f"out of memory")
+                if self.ptr > self.memory_size:
+                    raise Exception(f"out of memory")
             elif ins == INS.DEC_PTR:
                 self.ptr -= self.inc_pairs[self.ip]
 
-                if self.ptr > 0:
-                    Exception(f"out of memory")
+                if self.ptr < 0:
+                    raise Exception(f"out of memory")
             elif ins == INS.INPUT:
                 self.data[self.ptr] = self.read()
             elif ins == INS.OUTPUT:
@@ -340,14 +375,19 @@ class Bfi:
                 if mask.can_apply(self.data, self.ptr):
                     self.ptr = mask.apply(self.data, self.ptr)
                 else:
-                    Exception(f"mask was broken")
-            elif ins == INS.X_DEBUG:
-                print(f"at {self.ip}({self.src[self.ip:self.ip + 16]}), data: {self.data[0:32]}")
+                    raise Exception(f"mask was broken")
+            elif ins == INS.X_SKIPR:
+                try:
+                    self.ptr = self.data.index(0, self.ptr)
+                except Exception:
+                    raise Exception(f"out of memory")
+            elif self.debug and ins == INS.X_DEBUG:
+                print(f"""at {self.ip}({"".join(map(chr, self.src[self.ip:self.ip + 16]))}),\n  data: {self.data[0:32]}""")
 
                 dumped = self.data[self.ptr:self.ptr + 32]
                 print(f"  {self.ptr}: {dumped}")
             else:
-                Exception(f"unknown instruction")
+                raise Exception(f"unknown instruction")
 
             self.ip += 1
         # except Exception as e:
@@ -360,11 +400,12 @@ class Bfi:
     def exec(filename: str,
             memory_size: int = 0x10000,
             read: Callable[[], int] = default_read,
-            write: Callable[[int], None] = default_write) -> None:
+            write: Callable[[int], None] = default_write,
+            debug=False) -> None:
         with io.open(filename) as f:
             src = f.read()
 
-        bfi = Bfi(src, memory_size, read, write)
+        bfi = Bfi(src, memory_size, read, write, debug)
 
         bfi.run()
 
