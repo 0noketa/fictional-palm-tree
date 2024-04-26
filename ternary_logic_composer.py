@@ -25,7 +25,7 @@ bt_pti = neg_(1)
 bt_nti = neg_(-1)
 
 inc = (lambda x: (x + 2) % 3 - 1)
-dec = (lambda x: (x + 1) % 3 - 1)
+dec = (lambda x: x % 3 - 1)
 
 clamp_up = (lambda x: x if x == 1 else 0)
 clamp_down = (lambda x: x if x == -1 else 0)
@@ -60,6 +60,7 @@ TriINTERCAL_and = (lambda x, y: 0 if 0 in (x, y) else -1 if -1 in (x, y) else 1)
 TriINTERCAL_or = (lambda x, y: -1 if -1 in (x, y) else 1 if 1 in (x, y) else 0)
 TriINTERCAL_but = bt_max
 TriINTERCAL_sharkfin = bt_sum
+# invertible
 TriINTERCAL_what = (lambda x, y: y if x == 0 else (x + y + 2) % 3 - 1 if x == 1 else (x + y + 3) % 3 - 1)
 
 unary_ops = {
@@ -115,9 +116,100 @@ def make_table(f, argc=2, rank=1, args=[], table={}):
 
     return table
 
-def print_table(f, argc, style=1):
+
+def is_symmetric(table):
+    for i in [-1, 0, 1]:
+        for j in [-1, 0, 1]:
+            if table[i][j] != table[j][i]:
+                return False
+
+    return True
+
+def get_type_of_invertible(table, argc=1):
+    # rewrite all
+
+    if argc == 1:
+        attrs = [True, True]
+
+        for i in [-1, 0, 1]:
+            j = table[table[i]]
+            k = table[j]
+            if i != j:
+                attrs[0] = False
+            if i != k:
+                attrs[1] = False
+
+        return attrs
+
+    attrs = [True, True, True, True, True, True]
+
+    for i in [-1, 0, 1]:
+        for j in [-1, 0, 1]:
+            if i != table[table[i][j]][j]:
+                attrs[0] = False
+
+            if i != table[i][table[i][j]]:
+                attrs[1] = False
+
+            if j != table[table[i][j]][j]:
+                attrs[2] = False
+
+            if j != table[i][table[i][j]]:
+                attrs[3] = False
+
+            if i != table[table[i][j]][table[j][i]]:
+                attrs[4] = False
+
+            if j != table[table[i][j]][table[j][i]]:
+                attrs[5] = False
+
+    return attrs
+
+def is_invertible(table, argc=2, attrs=None):
+    if attrs is None:
+        attrs = get_type_of_invertible(table, argc=argc)
+
+    return sum(attrs)
+
+def print_table(f, argc, style=1, show_attrs=False):
     result = make_table(f, argc, args=[], table={})
 
+    if show_attrs:
+        ss = []
+
+        if argc == 1 and is_invertible(result, argc=1):
+            attrs = get_type_of_invertible(result, argc=1)
+            if attrs[0]:
+                ss.append("x = f.f(x)")
+            if attrs[1]:
+                ss.append("x = f.f.f(x)")
+
+        if argc == 2:
+            symmetric = is_symmetric(result)
+            if symmetric:
+                ss.append("f(x, y) = f(y, x)")
+
+            if is_invertible(result, argc=2):
+                attrs = get_type_of_invertible(result, argc=2)
+                if attrs[0]:
+                    ss.append("x = f(f(x, y), y)")
+                if not symmetric:
+                    if attrs[1]:
+                        ss.append("x = f(x, f(x, y))")
+                    if attrs[2]:
+                        ss.append("y = f(f(x, y), y)")
+                    if attrs[3]:
+                        ss.append("y = f(x, f(x, y))")
+                if attrs[4]:
+                    ss.append("x = f(f(x, y), f(y, x))")
+                if not symmetric and attrs[5]:
+                    ss.append("y = f(f(x, y), f(y, x))")
+
+        if len(ss):
+            print("attributes:")
+            print("\n".join(map(lambda x: "  " + x, ss)) + "\n")
+            print("----")
+ 
     if style in range(2, 4):
         ternary_range = [0, 1, -1]
         to_sym = to_utsym
@@ -181,6 +273,7 @@ def composite_unary_and_binary(f0, f1):
 
 if __name__ == "__main__":
     table_style = 1
+    show_attrs = False
 
     while True:
         cmds = input().strip().split()
@@ -193,8 +286,16 @@ if __name__ == "__main__":
         if cmds[0] == "bye":
             break
 
+        if cmds[0] == "attrs":
+            show_attrs = True
+            continue
+
+        if cmds[0] == "noattrs":
+            show_attrs = False
+            continue
+
         if cmds[0] == "help":
-            print("repl: style help bye")
+            print("repl: attrs noattrs style help bye")
             print("unary: " + " ".join(unary_ops.keys()))
             print("binary: " + " ".join(binary_ops.keys()))
             continue
@@ -234,7 +335,7 @@ if __name__ == "__main__":
             for i in reversed(fs):
                 f = composite_unary(i, f)
 
-            print_table(f, argc=1, style=table_style)
+            print_table(f, argc=1, style=table_style, show_attrs=show_attrs)
         elif ff_name in binary_ops:
             first = binary_ops[ff_name]
 
@@ -242,7 +343,7 @@ if __name__ == "__main__":
             for i in reversed(fs):
                 f = composite_unary_and_binary(i, f)
 
-            print_table(f, argc=2, style=table_style)
+            print_table(f, argc=2, style=table_style, show_attrs=show_attrs)
         else:
             print(f"unknown op {ff_name}")
 
