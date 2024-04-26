@@ -101,6 +101,37 @@ binary_ops = {
     "3i_what": TriINTERCAL_what
 }
 
+
+def append_funcs():
+    def table_to_func(table):
+        table = [[x for x in xs] for xs in table]
+        return (lambda x, y: table[x + 1][y + 1])
+
+    def swapped(arr, at_=0, dist=1):
+        arr = list(arr)
+        t = arr[at_]
+        arr[at_] = arr[(at_ + dist) % 3]
+        arr[(at_ + dist) % 3] = t
+        return arr
+
+    row = [-1, 0, 1]
+
+    n = 0
+
+    for swap_cnt in range(2):
+        for shift_dist in range(3):
+            table = []
+            for i in range(3):
+                table.append(row)
+                row = row[(shift_dist % 3):] + row[:(shift_dist % 3)]
+
+            binary_ops[f"ivbl{n}"] = table_to_func(table)
+            n += 1
+
+        row = swapped(row, at_=0, dist=1)
+
+append_funcs()
+
 def make_table(f, argc=2, rank=1, args=[], table={}):
     if rank == argc:
         for i in [-1, 0, 1]:
@@ -148,10 +179,10 @@ def get_type_of_invertible(table, argc=1):
             if i != table[table[i][j]][j]:
                 attrs[0] = False
 
-            if i != table[i][table[i][j]]:
+            if i != table[j][table[i][j]]:
                 attrs[1] = False
 
-            if j != table[table[i][j]][j]:
+            if j != table[table[i][j]][i]:
                 attrs[2] = False
 
             if j != table[i][table[i][j]]:
@@ -195,9 +226,9 @@ def print_table(f, argc, style=1, show_attrs=False):
                     ss.append("x = f(f(x, y), y)")
                 if not symmetric:
                     if attrs[1]:
-                        ss.append("x = f(x, f(x, y))")
+                        ss.append("x = f(y, f(x, y))")
                     if attrs[2]:
-                        ss.append("y = f(f(x, y), y)")
+                        ss.append("y = f(f(x, y), x)")
                     if attrs[3]:
                         ss.append("y = f(x, f(x, y))")
                 if attrs[4]:
