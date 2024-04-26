@@ -101,7 +101,9 @@ binary_ops = {
     "3i_what": TriINTERCAL_what
 }
 
-
+# generates 6 functions.
+# every function does not change attributes by composition with "inc" or "dec" except "ivbl0".
+# it means at least 3 symmetric invertible functions exist. "complement"="ivbl4" and its composition with "inc" or "dec".
 def append_funcs():
     def table_to_func(table):
         table = [[x for x in xs] for xs in table]
