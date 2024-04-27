@@ -1,4 +1,8 @@
 # many-valued logic symmetric invertible function generator
+#
+# currently this program generrates n functions on n-any logic.
+# besides if n = m ** o and m is prime number, additional m^2 functions.
+
 
 
 def is_xor(table, radix):
@@ -38,10 +42,42 @@ def print_table(table, radix):
             return f"{i:3} "
 
         return f"{i},"
-            
+
     for i in range(radix):
         s = "".join(map(to_sym, table[i]))
         print(s)
+
+def get_prime_factors(n):
+    results = []
+
+    while n % 2 == 0:
+        results.append(2)
+
+        n >>= 1
+        if n == 1:
+            break
+
+    for i in range(3, n + 1, 2):
+        while n % i == 0:
+            results.append(i)
+            n //= i
+            if n == 1:
+                return results
+
+    return results
+
+def func_to_table(f, radix):
+    return [[f(x, y) for x in range(radix)] for y in range(radix)]
+
+def make_composite_table(radix, sub_table, sub_radix, cols):
+    def f(x, y):
+        result = 0
+        for i in range(cols):
+            result += sub_table[x // (sub_radix ** i) % sub_radix][y // (sub_radix ** i) % sub_radix]  * (sub_radix ** i)
+
+        return result
+
+    return func_to_table(f, radix)
 
 if __name__ == "__main__":
     import sys
@@ -58,11 +94,38 @@ if __name__ == "__main__":
         radix = int(sys.argv[1])
 
     if len(sys.argv) > 2:
-        n = int(sys.argv[2]) % radix
+        n = int(sys.argv[2])
         
     table = make_xor(radix)
 
-    for i in range(n):
+    for i in range(radix):
+        if i == n:
+            print_table(table, radix)
+            sys.exit(0)
+
         apply_inc_to_table(table, radix)
-    
-    print_table(table, radix)
+
+
+    pfs = get_prime_factors(radix)
+
+    if len(set(pfs)) == 1:
+        pf = list(pfs)[0]
+        sub_table = make_xor(pf)
+
+        n -= radix
+        for i in range(pf):
+            table = make_composite_table(radix, sub_table, pf, len(pfs))
+
+            for j in range(radix // pf):
+                if j == n:
+                    print_table(table, radix)
+                    sys.exit(0)
+
+                for k in range(pf):
+                    apply_inc_to_table(table, radix)
+
+            apply_inc_to_table(sub_table, pf)
+            n -= radix // pf
+
+
+    print("invalid func number")
