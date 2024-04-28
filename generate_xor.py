@@ -1,8 +1,10 @@
 # many-valued logic symmetric invertible function generator
 #
 # currently this program generrates n functions on n-any logic.
-# besides if n = m ** o and m is prime number, additional m^2 functions.
+# besides if n = m ** o and m is prime number, additional m^(log(m, n)) functions.
 
+
+import math
 
 
 def is_xor(table, radix):
@@ -69,10 +71,10 @@ def get_prime_factors(n):
 def func_to_table(f, radix):
     return [[f(x, y) for x in range(radix)] for y in range(radix)]
 
-def make_composite_table(radix, sub_table, sub_radix, cols):
+def make_composite_table(radix, sub_table, sub_radix):
     def f(x, y):
         result = 0
-        for i in range(cols):
+        for i in range(int(math.log(radix, sub_radix))):
             result += sub_table[x // (sub_radix ** i) % sub_radix][y // (sub_radix ** i) % sub_radix]  * (sub_radix ** i)
 
         return result
@@ -114,7 +116,7 @@ if __name__ == "__main__":
 
         n -= radix
         for i in range(pf):
-            table = make_composite_table(radix, sub_table, pf, len(pfs))
+            table = make_composite_table(radix, sub_table, pf)
 
             for j in range(radix // pf):
                 if j == n:
@@ -126,6 +128,5 @@ if __name__ == "__main__":
 
             apply_inc_to_table(sub_table, pf)
             n -= radix // pf
-
 
     print("invalid func number")
