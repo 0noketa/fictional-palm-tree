@@ -1,7 +1,7 @@
 # many-valued logic symmetric invertible function generator
 #
 # currently this program generrates n functions on n-any logic.
-# besides if n = m ** o and m is prime number, additional m^(n/m) functions.
+# besides if n = m ** o and m is prime number, additional n functions.
 
 
 import math
