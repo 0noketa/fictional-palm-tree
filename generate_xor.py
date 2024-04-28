@@ -20,14 +20,8 @@ def apply_inc_to_table(table, radix):
             table[x][y] = (table[x][y] - 1) % radix
 
 def make_xor(radix):
-    table = []
-    for i in range(radix):
-        row = list(reversed(range(radix)))
-        row = row[i:] + row[:i]
-
-        table.append(row)
-
-    return table
+    f = (lambda x, y: (radix - 1 - x - y) % radix)
+    return [[f(x, y) for x in range(radix)] for y in range(radix)]
 
 def print_table(table, radix):
     def to_sym(i):
